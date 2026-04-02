@@ -1,31 +1,48 @@
 import sympy as sp
 
+def nice_format(expr):
+    s = str(expr)
+    s = s.replace('**', '^')
+    s = s.replace('*', ' * ')
+    return s
+
+def apply_unit(expr_str, unit_expr):
+    if not expr_str:
+        return sp.sympify(0)
+    expr = sp.sympify(expr_str)
+    if expr == 0:
+        return sp.sympify(0)
+    # Если это просто число (нет символов), домножаем на символьную базу
+    if not expr.free_symbols:
+        return sp.expand(expr * unit_expr)
+    return expr
+
 def format_equation(force_var, terms_list):
     # Убираем нулевые значения
     terms_list = [sp.sympify(t) for t in terms_list if t != 0 and t != sp.sympify(0)]
     
     if not terms_list:
-        print(f"{force_var} = 0")
+        print(f"{force_var}(x) = 0")
         return sp.sympify(0)
         
     # Формируем первоначальное уравнение: Силы приравнены к нулю
     lhs_str = force_var
     for t in terms_list:
-        term_str = str(t).replace(' ', '')
+        term_str = nice_format(t)
         if term_str.startswith('-'):
-            lhs_str += f" - {term_str[1:]}"
+            lhs_str += f" - {term_str[1:].strip()}"
         else:
             lhs_str += f" + {term_str}"
             
     print(f"{lhs_str} = 0")
     
-    # Переносим всё в правую часть (меняем знаки)
+    # Переносим всё в правую часть (меняем знаки и раскрываем скобки)
     rhs_str = ""
     for t in terms_list:
-        inv_t = sp.simplify(-t)
-        term_str = str(inv_t).replace(' ', '')
+        inv_t = sp.expand(-t)
+        term_str = nice_format(inv_t)
         if term_str.startswith('-'):
-            rhs_str += f" - {term_str[1:]}"
+            rhs_str += f" - {term_str[1:].strip()}"
         else:
             if rhs_str == "":
                 rhs_str += f"{term_str}"
@@ -35,11 +52,14 @@ def format_equation(force_var, terms_list):
     if rhs_str == "":
         rhs_str = "0"
         
-    print(f"{force_var} = {rhs_str}")
+    print(f"{force_var}(x) = {rhs_str}")
     
     # Полностью сокращаем / упрощаем выражение
     simplified = sp.simplify(sum([-t for t in terms_list]))
-    print(f"{force_var} = {simplified}")
+    
+    # Не печатаем третий раз если упрощенное выражение совпадает с rhs_str
+    if nice_format(simplified) != rhs_str:
+        print(f"{force_var}(x) = {nice_format(simplified)}")
     
     return simplified
 
@@ -73,22 +93,25 @@ def main():
             base_pos = int(config.get('General', 'base', fallback=1))
             num_bars = int(config.get('General', 'bars', fallback=0))
             
+            q_sym = sp.Symbol('q')
+            L_sym = sp.Symbol('L')
+            
             bars_data = {}
             for i in range(1, num_bars + 1):
                 sec = f'Bar {i}'
                 bars_data[i] = {
-                    'L': sp.sympify(config.get(sec, 'L', fallback='0')),
-                    'qx': sp.sympify(config.get(sec, 'qx', fallback='0')),
-                    'qy': sp.sympify(config.get(sec, 'qy', fallback='0'))
+                    'L': apply_unit(config.get(sec, 'L', fallback='0'), L_sym),
+                    'qx': apply_unit(config.get(sec, 'qx', fallback='0'), q_sym),
+                    'qy': apply_unit(config.get(sec, 'qy', fallback='0'), q_sym)
                 }
                 
             nodes_data = {}
             for i in range(1, num_bars + 2):
                 sec = f'Node {i}'
                 nodes_data[i] = {
-                    'Fx': sp.sympify(config.get(sec, 'Fx', fallback='0')),
-                    'Fy': sp.sympify(config.get(sec, 'Fy', fallback='0')),
-                    'Mz': sp.sympify(config.get(sec, 'Mz', fallback='0'))
+                    'Fx': apply_unit(config.get(sec, 'Fx', fallback='0'), q_sym * L_sym),
+                    'Fy': apply_unit(config.get(sec, 'Fy', fallback='0'), q_sym * L_sym),
+                    'Mz': apply_unit(config.get(sec, 'Mz', fallback='0'), q_sym * (L_sym**2))
                 }
                 
             if 'Plot' in config:
@@ -122,6 +145,10 @@ def main():
     
         bars_data = {}
         print("\n--- Ввод данных для стержней ---")
+        
+        q_sym = sp.Symbol('q')
+        L_sym = sp.Symbol('L')
+        
         for i in range(1, num_bars + 1):
             print(f"\nСтержень {i}:")
             L_str = input("  Длина стержня [L]: ")
@@ -129,9 +156,9 @@ def main():
             qy_str = input("  qy [q] (вверх +, вниз -): ")
             
             bars_data[i] = {
-                'L': sp.sympify(L_str if L_str else '0'),
-                'qx': sp.sympify(qx_str if qx_str else '0'),
-                'qy': sp.sympify(qy_str if qy_str else '0')
+                'L': apply_unit(L_str, L_sym),
+                'qx': apply_unit(qx_str, q_sym),
+                'qy': apply_unit(qy_str, q_sym)
             }
     
         nodes_data = {}
@@ -143,9 +170,9 @@ def main():
             Mz_str = input("  Момент Mz [qL^2] (по часовой +, против -): ")
             
             nodes_data[i] = {
-                'Fx': sp.sympify(Fx_str if Fx_str else '0'),
-                'Fy': sp.sympify(Fy_str if Fy_str else '0'),
-                'Mz': sp.sympify(Mz_str if Mz_str else '0')
+                'Fx': apply_unit(Fx_str, q_sym * L_sym),
+                'Fy': apply_unit(Fy_str, q_sym * L_sym),
+                'Mz': apply_unit(Mz_str, q_sym * (L_sym**2))
             }
 
     x = sp.Symbol('x')
@@ -194,14 +221,10 @@ def main():
                 
             if nd['Fy'] != 0:
                 qy_terms.append(nd['Fy'])
-                # Момент = Fy * (X_cut - X_force)
-                # Дает плюс (по часовой), если сила Fy > 0 действует:
-                # - слева от сечения (если идем слева направо, рассматриваем левую часть, X_cut > X_k) -> X_cut - X_k > 0 -> ПЛЮС
-                # - справа от сечения (если идем справа налево, рассматриваем правую часть, X_cut < X_k) -> но тогда момент против часовой -> X_cut - X_k < 0 -> МИНУС
-                mz_terms.append(sp.simplify(nd['Fy'] * (X_cut - X_k)))
+                dist = sp.simplify(X_cut - X_k)
+                mz_terms.append(nd['Fy'] * dist)
                 
             if nd['Mz'] != 0:
-                # Момент берем с плюсом по часовой стрелке
                 mz_terms.append(nd['Mz'])
                 
         # 2. Собираем силы от уже полностью пройденных стержней
@@ -213,27 +236,27 @@ def main():
             X_center_k = sp.simplify(X_start_k + L_k / 2) # Центр тяжести 
             
             if bd['qx'] != 0:
-                nx_terms.append(sp.simplify(bd['qx'] * L_k))
+                nx_terms.append(bd['qx'] * L_k)
                 
             if bd['qy'] != 0:
-                qy_terms.append(sp.simplify(bd['qy'] * L_k))
-                mz_terms.append(sp.simplify((bd['qy'] * L_k) * (X_cut - X_center_k)))
+                qy_terms.append(bd['qy'] * L_k)
+                dist = sp.simplify(X_cut - X_center_k)
+                mz_terms.append((bd['qy'] * L_k) * dist)
                 
         # 3. Собираем силы от текущего (рассматриваемого) участка от начала до x
         if qx != 0:
-            nx_terms.append(sp.simplify(qx * x))
+            nx_terms.append(qx * x)
             
         if qy != 0:
-            qy_terms.append(sp.simplify(qy * x))
+            qy_terms.append(qy * x)
             # Центр тяжести рассматриваемого куска
             if base_pos == 1:
-                # Идем в минус по X. Центр тяжести правее сечения на x/2.
                 X_center_cut = sp.simplify(X_start - x / 2)
             else:
-                # Идем в плюс по X. Центр тяжести левее сечения на x/2.
                 X_center_cut = sp.simplify(X_start + x / 2)
                 
-            mz_terms.append(sp.simplify((qy * x) * (X_cut - X_center_cut)))
+            dist = sp.simplify(X_cut - X_center_cut)
+            mz_terms.append((qy * x) * dist)
         
         print(f"\n=========================================================")
         if base_pos == 1:
@@ -246,22 +269,22 @@ def main():
         nx_expr = format_equation("Nx", nx_terms)
         nx_0 = sp.simplify(nx_expr.subs(x, 0))
         nx_L = sp.simplify(nx_expr.subs(x, L))
-        print(f"Nx(0) = {nx_0}")
-        print(f"Nx({L}) = {nx_L}")
+        print(f"Nx(0) = {nice_format(nx_0)}")
+        print(f"Nx({nice_format(L)}) = {nice_format(nx_L)}")
         
         print(f"\n--- Рассчет Qy для участка {bar_idx} ---")
         q_expr = format_equation("Qy", qy_terms)
         q_0 = sp.simplify(q_expr.subs(x, 0))
         q_L = sp.simplify(q_expr.subs(x, L))
-        print(f"Qy(0) = {q_0}")
-        print(f"Qy({L}) = {q_L}")
+        print(f"Qy(0) = {nice_format(q_0)}")
+        print(f"Qy({nice_format(L)}) = {nice_format(q_L)}")
         
         print(f"\n--- Рассчет Mz для участка {bar_idx} ---")
         mz_expr = format_equation("Mz", mz_terms)
         mz_0 = sp.simplify(mz_expr.subs(x, 0))
         mz_L = sp.simplify(mz_expr.subs(x, L))
-        print(f"Mz(0) = {mz_0}")
-        print(f"Mz({L}) = {mz_L}")
+        print(f"Mz(0) = {nice_format(mz_0)}")
+        print(f"Mz({nice_format(L)}) = {nice_format(mz_L)}")
         
         # Сохраняем координаты для построения
         results.append({
