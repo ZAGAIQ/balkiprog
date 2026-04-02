@@ -115,8 +115,7 @@ def main():
                 }
                 
             if 'Plot' in config:
-                for key, val in config.items('Plot'):
-                    plot_vars[sp.Symbol(key)] = float(val)
+                print("Секция [Plot] замечена, но она больше не нужна. Все переменные приравниваются к 1.")
                     
             print(f"Данные успешно считаны из {filename}!")
             
@@ -313,19 +312,21 @@ def main():
         import matplotlib.pyplot as plt
         import numpy as np
         
-        plot_epures(results, base_pos, X_global, num_bars, bars_data, x, plot_vars)
+        plot_epures(results, base_pos, X_global, num_bars, bars_data, x)
         
     except ImportError:
         print("\n[!] Библиотеки matplotlib и/или numpy не установлены. Визуализация не построена.")
         print("Для работы графиков установите их: pip install matplotlib numpy")
 
-def plot_epures(results, base_pos, X_global, num_bars, bars_data, x_sym, predefined_subs=None):
-    if predefined_subs is None:
-        predefined_subs = {}
-        
+def plot_epures(results, base_pos, X_global, num_bars, bars_data, x_sym):
     import matplotlib.pyplot as plt
     import numpy as np
 
+    q_sym = sp.Symbol('q')
+    L_sym = sp.Symbol('L')
+    subs_dict = {q_sym: 1.0, L_sym: 1.0}
+
+    # Находим все остальные неизвестные переменные и приравниваем их к 1
     free_syms = set()
     for res in results:
         for ex in res['exprs'].values():
@@ -337,24 +338,12 @@ def plot_epures(results, base_pos, X_global, num_bars, bars_data, x_sym, predefi
             
     free_syms.discard(x_sym)
     
-    # Удаляем из поиска те, что уже предопределены в task.txt
-    for sym in predefined_subs.keys():
-        free_syms.discard(sym)
-    
-    subs_dict = dict(predefined_subs)
-
-    if free_syms:
-        print("\n================ ВИЗУАЛИЗАЦИЯ ================")
-        print("Для построения графиков обнаружены символьные переменные.")
-        print("Пожалуйста, введите их числовые значения:")
-        for sym in free_syms:
-            while True:
-                val = input(f"  {sym} = ")
-                try:
-                    subs_dict[sym] = float(val)
-                    break
-                except ValueError:
-                    print("  Пожалуйста, введите число (например, 10 или 2.5).")
+    for sym in free_syms:
+        if sym not in subs_dict:
+            subs_dict[sym] = 1.0
+            
+    print("\n================ ВИЗУАЛИЗАЦИЯ ================")
+    print("Графики строятся с числовыми значениями: q = 1, L = 1")
                     
     X_plot = []
     Nx_plot = []
@@ -408,6 +397,51 @@ def plot_epures(results, base_pos, X_global, num_bars, bars_data, x_sym, predefi
 
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
     
+    # Отрисовываем границы стержней
+    unique_x = set()
+    for i in range(1, num_bars + 2):
+        x_val = float(X_global[i].subs(subs_dict)) if isinstance(X_global[i], sp.Basic) else float(X_global[i])
+        unique_x.add(x_val)
+        
+    for ax in axs:
+        for x_val in unique_x:
+            ax.axvline(x=x_val, color='black', linestyle='--', alpha=0.5)
+            
+    # Добавляем точки координат по краям
+    annotated_points = {0: set(), 1: set(), 2: set()}
+    for res in results:
+        bar_idx = res['bar']
+        coords = res['coords']
+        
+        if base_pos == 1:
+            X_start_sym = X_global[bar_idx + 1]
+            X_end_sym = X_global[bar_idx]
+        else:
+            X_start_sym = X_global[bar_idx]
+            X_end_sym = X_global[bar_idx + 1]
+            
+        X_s = float(X_start_sym.subs(subs_dict)) if isinstance(X_start_sym, sp.Basic) else float(X_start_sym)
+        X_e = float(X_end_sym.subs(subs_dict)) if isinstance(X_end_sym, sp.Basic) else float(X_end_sym)
+        
+        for k, var_name in enumerate(['Nx', 'Qy', 'Mz']):
+            val_0_sym = coords[var_name][0][1]
+            val_L_sym = coords[var_name][1][1]
+            
+            y_s = float(val_0_sym.subs(subs_dict)) if isinstance(val_0_sym, sp.Basic) else float(val_0_sym)
+            y_e = float(val_L_sym.subs(subs_dict)) if isinstance(val_L_sym, sp.Basic) else float(val_L_sym)
+            
+            pt_s = (round(X_s, 3), round(y_s, 3))
+            if pt_s not in annotated_points[k]:
+                axs[k].plot(pt_s[0], pt_s[1], 'ko', markersize=4)
+                axs[k].annotate(f"({pt_s[0]:.1f}; {pt_s[1]:.1f})", pt_s, textcoords="offset points", xytext=(0,5), ha='center', fontsize=8)
+                annotated_points[k].add(pt_s)
+                
+            pt_e = (round(X_e, 3), round(y_e, 3))
+            if pt_e not in annotated_points[k]:
+                axs[k].plot(pt_e[0], pt_e[1], 'ko', markersize=4)
+                axs[k].annotate(f"({pt_e[0]:.1f}; {pt_e[1]:.1f})", pt_e, textcoords="offset points", xytext=(0,5), ha='center', fontsize=8)
+                annotated_points[k].add(pt_e)
+    
     axs[0].plot(X_plot, Nx_plot, 'b-', linewidth=2)
     axs[0].fill_between(X_plot, Nx_plot, alpha=0.3, color='blue')
     axs[0].set_ylabel('Nx')
@@ -424,7 +458,7 @@ def plot_epures(results, base_pos, X_global, num_bars, bars_data, x_sym, predefi
     axs[2].fill_between(X_plot, Mz_plot, alpha=0.3, color='green')
     axs[2].set_ylabel('Mz')
     axs[2].grid(True)
-    axs[2].set_xlabel('X (координата)')
+    axs[2].set_xlabel('X (длина)')
     axs[2].set_title('Эпюра изгибающих моментов Mz')
     
     plt.tight_layout()
