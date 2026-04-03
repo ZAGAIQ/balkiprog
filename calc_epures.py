@@ -135,8 +135,12 @@ def main():
             # Определяем строку-подсказку для оси X
             if base_pos == 1:
                 x_dir_str = "(влево +, вправо -)"
+                y_dir_str = "(вниз +, вверх -)"
+                mz_dir_str = "(против часовой +, по часовой -)"
             else:
                 x_dir_str = "(вправо +, влево -)"
+                y_dir_str = "(вверх +, вниз -)"
+                mz_dir_str = "(по часовой +, против -)"
                 
         except ValueError:
             print("Ошибка: введите корректное число.")
@@ -152,7 +156,7 @@ def main():
             print(f"\nСтержень {i}:")
             L_str = input("  Длина стержня [L]: ")
             qx_str = input(f"  qx [q] {x_dir_str}: ")
-            qy_str = input("  qy [q] (вверх +, вниз -): ")
+            qy_str = input(f"  qy [q] {y_dir_str}: ")
             
             bars_data[i] = {
                 'L': apply_unit(L_str, L_sym),
@@ -165,8 +169,8 @@ def main():
         for i in range(1, num_bars + 2):
             print(f"\nУзел {i}:")
             Fx_str = input(f"  Fx [qL] {x_dir_str}: ")
-            Fy_str = input("  Fy [qL] (вверх +, вниз -): ")
-            Mz_str = input("  Момент Mz [qL^2] (по часовой +, против -): ")
+            Fy_str = input(f"  Fy [qL] {y_dir_str}: ")
+            Mz_str = input(f"  Момент Mz [qL^2] {mz_dir_str}: ")
             
             nodes_data[i] = {
                 'Fx': apply_unit(Fx_str, q_sym * L_sym),
@@ -257,6 +261,11 @@ def main():
             dist = sp.simplify(X_cut - X_center_cut)
             mz_terms.append((qy * x) * dist)
         
+        if base_pos == 1:
+            # Инвертируем знаки для Qy и Mz при заделке слева
+            qy_terms = [-t for t in qy_terms]
+            mz_terms = [-t for t in mz_terms]
+
         print(f"\n=========================================================")
         if base_pos == 1:
             print(f"1. Берем участок {bar_idx} (справа налево от узла {bar_idx+1} к узлу {bar_idx})")
