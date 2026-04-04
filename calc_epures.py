@@ -72,111 +72,55 @@ def main():
     
     import configparser
     
-    print("Как вы хотите ввести данные?")
-    print("  1 - Вручную через консоль")
-    print("  2 - Считать из файла (task.txt)")
-    mode = input("Ваш выбор (по умолчанию 1): ").strip()
+    print("Ввод данных производится только из конфигурационного файла.")
+    filename = input("Имя файла (нажмите Enter для task.txt): ").strip()
+    if not filename: filename = 'task.txt'
     
-    plot_vars = {}
-    
-    if mode == '2':
-        filename = input("Имя файла (нажмите Enter для task.txt): ").strip()
-        if not filename: filename = 'task.txt'
-        
-        config = configparser.ConfigParser()
-        config.optionxform = str # Сохраняем регистр ключей
-        try:
-            if not config.read(filename, encoding='utf-8'):
-                print(f"Ошибка: не удалось прочитать файл {filename}")
-                return
-                
-            base_pos = int(config.get('General', 'base', fallback=1))
-            num_bars = int(config.get('General', 'bars', fallback=0))
-            
-            q_sym = sp.Symbol('q')
-            L_sym = sp.Symbol('L')
-            
-            bars_data = {}
-            for i in range(1, num_bars + 1):
-                sec = f'Bar {i}'
-                bars_data[i] = {
-                    'L': apply_unit(config.get(sec, 'L', fallback='0'), L_sym),
-                    'qx': apply_unit(config.get(sec, 'qx', fallback='0'), q_sym),
-                    'qy': apply_unit(config.get(sec, 'qy', fallback='0'), q_sym)
-                }
-                
-            nodes_data = {}
-            for i in range(1, num_bars + 2):
-                sec = f'Node {i}'
-                nodes_data[i] = {
-                    'Fx': apply_unit(config.get(sec, 'Fx', fallback='0'), q_sym * L_sym),
-                    'Fy': apply_unit(config.get(sec, 'Fy', fallback='0'), q_sym * L_sym),
-                    'Mz': apply_unit(config.get(sec, 'Mz', fallback='0'), q_sym * (L_sym**2))
-                }
-                
-            if 'Plot' in config:
-                print("Секция [Plot] замечена, но она больше не нужна. Все переменные приравниваются к 1.")
-                    
-            print(f"Данные успешно считаны из {filename}!")
-            
-        except Exception as e:
-            print(f"Ошибка при парсинге файла: {e}")
+    config = configparser.ConfigParser()
+    config.optionxform = str # Сохраняем регистр ключей
+    try:
+        if not config.read(filename, encoding='utf-8'):
+            print(f"Ошибка: не удалось прочитать файл {filename}")
             return
             
-    else:
-        try:
-            base_pos = int(input("Где находится основание (заделка)?\n  1 - Слева (узел 1)\n  2 - Справа (последний узел)\nВаш выбор: "))
-            if base_pos not in [1, 2]:
-                print("Ошибка: введите 1 или 2.")
-                return
-                
-            num_bars = int(input("Введите количество стержней: "))
-            
-            # Определяем строку-подсказку для оси X
-            if base_pos == 1:
-                x_dir_str = "(влево +, вправо -)"
-                y_dir_str = "(вниз +, вверх -)"
-                mz_dir_str = "(против часовой +, по часовой -)"
-            else:
-                x_dir_str = "(вправо +, влево -)"
-                y_dir_str = "(вверх +, вниз -)"
-                mz_dir_str = "(по часовой +, против -)"
-                
-        except ValueError:
-            print("Ошибка: введите корректное число.")
-            return
-    
-        bars_data = {}
-        print("\n--- Ввод данных для стержней ---")
+        base_pos = int(config.get('General', 'base', fallback=1))
+        num_bars = int(config.get('General', 'bars', fallback=0))
         
         q_sym = sp.Symbol('q')
         L_sym = sp.Symbol('L')
         
+        bars_data = {}
         for i in range(1, num_bars + 1):
-            print(f"\nСтержень {i}:")
-            L_str = input("  Длина стержня [L]: ")
-            qx_str = input(f"  qx [q] {x_dir_str}: ")
-            qy_str = input(f"  qy [q] {y_dir_str}: ")
-            
+            sec = f'Bar {i}'
+            qx_val = apply_unit(config.get(sec, 'qx', fallback='0'), q_sym)
+            if base_pos == 1:
+                qx_val = -qx_val
             bars_data[i] = {
-                'L': apply_unit(L_str, L_sym),
-                'qx': apply_unit(qx_str, q_sym),
-                'qy': apply_unit(qy_str, q_sym)
+                'L': apply_unit(config.get(sec, 'L', fallback='0'), L_sym),
+                'qx': qx_val,
+                'qy': apply_unit(config.get(sec, 'qy', fallback='0'), q_sym)
             }
-    
-        nodes_data = {}
-        print("\n--- Ввод данных для узлов ---")
-        for i in range(1, num_bars + 2):
-            print(f"\nУзел {i}:")
-            Fx_str = input(f"  Fx [qL] {x_dir_str}: ")
-            Fy_str = input(f"  Fy [qL] {y_dir_str}: ")
-            Mz_str = input(f"  Момент Mz [qL^2] {mz_dir_str}: ")
             
+        nodes_data = {}
+        for i in range(1, num_bars + 2):
+            sec = f'Node {i}'
+            Fx_val = apply_unit(config.get(sec, 'Fx', fallback='0'), q_sym * L_sym)
+            if base_pos == 1:
+                Fx_val = -Fx_val
             nodes_data[i] = {
-                'Fx': apply_unit(Fx_str, q_sym * L_sym),
-                'Fy': apply_unit(Fy_str, q_sym * L_sym),
-                'Mz': apply_unit(Mz_str, q_sym * (L_sym**2))
+                'Fx': Fx_val,
+                'Fy': apply_unit(config.get(sec, 'Fy', fallback='0'), q_sym * L_sym),
+                'Mz': apply_unit(config.get(sec, 'Mz', fallback='0'), q_sym * (L_sym**2))
             }
+            
+        if 'Plot' in config:
+            print("Секция [Plot] замечена, но она больше не нужна. Все переменные приравниваются к 1.")
+                
+        print(f"Данные успешно считаны из {filename}!")
+        
+    except Exception as e:
+        print(f"Ошибка при парсинге файла: {e}")
+        return
 
     x = sp.Symbol('x')
 
