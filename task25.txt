@@ -30,7 +30,7 @@ Fy = 0
 Mz = 0
 
 [Node 2]
-Fx =-1
+Fx = -1
 Fy = 0
 Mz = 0
 
